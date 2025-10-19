@@ -40,7 +40,7 @@ app.get("/getUsers", async (req, res) => {
             data: data
         });
     } catch (error) {
-        console.error('❌ Error del servidor:', error);
+        console.error('  Error del servidor:', error);
         return res.status(500).json({
             success: false,
             error: error.message
@@ -138,7 +138,7 @@ app.post("/createUser", async (req, res) => {
     }
 });
 
-
+    
 // ==================== DELETE ====================
 app.delete("/deleteUser/:id_usuario", async (req, res) => {
     const { id_usuario } = req.params;

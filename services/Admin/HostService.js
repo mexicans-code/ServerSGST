@@ -49,7 +49,7 @@ app.get("/getHostData", async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Error del servidor:', error);
+        console.error('  Error del servidor:', error);
         return res.status(500).json({
             success: false,
             error: error.message
@@ -57,34 +57,7 @@ app.get("/getHostData", async (req, res) => {
     }
 });
 
-// ==================== READ BY ID ====================
-app.get("/getHostData/:id", async (req, res) => {
-    try {
-        const { data, error } = await supabase
-            .from('hosteleria')
-            .select('*')
-            .eq('id', req.params.id)
-            .single();
 
-        if (error) {
-            return res.status(500).json({
-                success: false,
-                error: error.message
-            });
-        }
-
-        return res.status(200).json({
-            success: true,
-            data: data
-        });
-    } catch (error) {
-        console.error('❌ Error del servidor:', error);
-        return res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
-});
 
 // ==================== CREATE ====================
 app.post("/createHost", async (req, res) => {
@@ -127,6 +100,9 @@ app.post("/createHost", async (req, res) => {
         });
     }
 });
+
+// ==================== UPDATE ====================
+
 
 
 
