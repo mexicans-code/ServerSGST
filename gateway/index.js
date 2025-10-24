@@ -33,19 +33,17 @@ app.use((req, res, next) => {
 const verifyToken = (req, res, next) => {
     const token = req.headers['authorization']?.split(' ')[1];
 
-    console.log('    GATEWAY: Verificando token...');
+    console.log('🔐 GATEWAY: Verificando token...');
     console.log('🔑 JWT_SECRET existe:', !!JWT_SECRET);
     console.log('🎫 Token recibido:', token ? 'Sí' : 'No');
 
     if (!token) {
-        console.log('  GATEWAY: Token no proporcionado');
+        console.log('❌ GATEWAY: Token no proporcionado');
         return res.status(403).json({
             success: false,
             error: "Token no proporcionado"
         });
     }
-
-    
 
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
@@ -53,7 +51,7 @@ const verifyToken = (req, res, next) => {
         req.usuario = decoded;
         next();
     } catch (error) {
-        console.log('  GATEWAY: Error verificando token:', error.message);
+        console.log('❌ GATEWAY: Error verificando token:', error.message);
         return res.status(401).json({
             success: false,
             error: "Token inválido o expirado",
@@ -302,10 +300,56 @@ app.get('/api/booking/getExperiences', async (req, res) => {
     }
 });
 
+// ===== RUTAS DE EXPERIENCIAS TURÍSTICAS =====
+app.get('/api/adminTouristExperiences/getTouristExperiences', async (req, res) => {
+    try {
+        const response = await axios.get(`${SERVICES.adminTouristExperiences}/getTouristExperiences`);
+        res.status(response.status).json(response.data);
+    } catch (error) {
+        res.status(error.response?.status || 500).json(
+            error.response?.data || { error: 'Error en el servicio de experiencias turísticas' }
+        );
+    }
+});
+
+app.post('/api/adminTouristExperiences/createTouristExperience', async (req, res) => {
+    try {
+        const response = await axios.post(`${SERVICES.adminTouristExperiences}/createTouristExperience`, req.body);
+        res.status(response.status).json(response.data);
+    } catch (error) {
+        res.status(error.response?.status || 500).json(
+            error.response?.data || { error: 'Error en el servicio de experiencias turísticas' }
+        );
+    }
+});
+
+app.put('/api/adminTouristExperiences/updateTouristExperience/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const response = await axios.put(`${SERVICES.adminTouristExperiences}/updateTouristExperience/${id}`, req.body);
+        res.status(response.status).json(response.data);
+    } catch (error) {
+        res.status(error.response?.status || 500).json(
+            error.response?.data || { error: 'Error en el servicio de experiencias turísticas' }
+        );
+    }
+});
+
+app.delete('/api/adminTouristExperiences/deleteTouristExperience/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const response = await axios.delete(`${SERVICES.adminTouristExperiences}/deleteTouristExperience/${id}`);
+        res.status(response.status).json(response.data);
+    } catch (error) {
+        res.status(error.response?.status || 500).json(
+            error.response?.data || { error: 'Error en el servicio de experiencias turísticas' }
+        );
+    }
+});
+
 // ===== RUTAS DE ADMINISTRACIÓN DE PERFIL =====
 app.get('/api/adminProfile/getProfile', verifyToken, async (req, res) => {
     try {
-        // IMPORTANTE: Pasar el token al servicio de perfil
         const response = await axios.get(`${SERVICES.adminProfile}/getProfile`, {
             headers: {
                 'Authorization': req.headers['authorization']
@@ -321,7 +365,6 @@ app.get('/api/adminProfile/getProfile', verifyToken, async (req, res) => {
 
 app.put('/api/adminProfile/updateProfile', verifyToken, async (req, res) => {
     try {
-        // IMPORTANTE: Pasar el token al servicio de perfil
         const response = await axios.put(
             `${SERVICES.adminProfile}/updateProfile`,
             req.body,
@@ -339,22 +382,53 @@ app.put('/api/adminProfile/updateProfile', verifyToken, async (req, res) => {
     }
 });
 
-// ===== RUTAS PROTEGIDAS =====
-app.use('/api/reservas', verifyToken, async (req, res) => {
+// ===== RUTAS DE RESEÑAS =====
+app.get('/api/reviews/getReviews', async (req, res) => {
     try {
-        const response = await axios({
-            method: req.method,
-            url: `${SERVICES.reservas}${req.path}`,
-            data: req.body,
-            headers: {
-                'Authorization': req.headers['authorization'],
-                'Content-Type': 'application/json'
-            }
-        });
+        console.log('🔍 req.query:', req.query);
+        const { id_reserva, id_hosteleria, id_experiencia } = req.query;
+
+        console.log('Parámetros recibidos:', { id_reserva, id_hosteleria, id_experiencia });
+
+        if (!id_reserva && !id_hosteleria && !id_experiencia) {
+            return res.status(400).json({
+                error: 'Se requiere id_reserva, id_hosteleria o id_experiencia'
+            });
+        }
+
+        let queryParams = [];
+        if (id_reserva) queryParams.push(`id_reserva=${id_reserva}`);
+        if (id_hosteleria) queryParams.push(`id_hosteleria=${id_hosteleria}`);
+        if (id_experiencia) queryParams.push(`id_experiencia=${id_experiencia}`);
+
+        const queryString = queryParams.join('&');
+        const fullUrl = `${SERVICES.reviews}/getReviews?${queryString}`;
+
+        console.log('🔗 Enviando a:', fullUrl);
+
+        const response = await axios.get(fullUrl);
         res.status(response.status).json(response.data);
     } catch (error) {
+        console.error('❌ Error:', error.message);
         res.status(error.response?.status || 500).json(
-            error.response?.data || { error: 'Error en el servicio de reservas' }
+            error.response?.data || { error: 'Error en reseñas' }
+        );
+    }
+});
+
+app.post('/api/reviews/addReview', async (req, res) => {
+    try {
+        console.log('📝 Agregando reseña:', req.body);
+
+        const fullUrl = `${SERVICES.reviews}/addReview`;
+        console.log('🔗 Enviando a:', fullUrl);
+
+        const response = await axios.post(fullUrl, req.body);
+        res.status(response.status).json(response.data);
+    } catch (error) {
+        console.error('❌ Error al agregar reseña:', error.message);
+        res.status(error.response?.status || 500).json(
+            error.response?.data || { error: 'Error al agregar reseña' }
         );
     }
 });
@@ -379,114 +453,9 @@ app.use('/api/chat', verifyToken, async (req, res) => {
     }
 });
 
-// ✅ Ruta de reviews actualizada para soportar múltiples tipos de búsqueda
-app.get('/api/reviews/getReviews', async (req, res) => {
-    try {
-        console.log('    req.query:', req.query);
-        console.log('    req.url:', req.url);
-        console.log('    req.originalUrl:', req.originalUrl);
-        
-        const { id_reserva, id_hosteleria, id_experiencia } = req.query;
-        
-        console.log('Parámetros recibidos:', { id_reserva, id_hosteleria, id_experiencia });
-        
-        // Validar que al menos uno de los parámetros esté presente
-        if (!id_reserva && !id_hosteleria && !id_experiencia) {
-            return res.status(400).json({ 
-                error: 'Se requiere id_reserva, id_hosteleria o id_experiencia' 
-            });
-        }
-
-        // Construir la URL con los parámetros que estén presentes
-        let queryParams = [];
-        if (id_reserva) queryParams.push(`id_reserva=${id_reserva}`);
-        if (id_hosteleria) queryParams.push(`id_hosteleria=${id_hosteleria}`);
-        if (id_experiencia) queryParams.push(`id_experiencia=${id_experiencia}`);
-        
-        const queryString = queryParams.join('&');
-        const fullUrl = `${SERVICES.reviews}/getReviews?${queryString}`;
-        
-        console.log('🔗 Enviando a:', fullUrl);
-        
-        const response = await axios.get(fullUrl);
-        res.status(response.status).json(response.data);
-    } catch (error) {
-        console.error('  Error:', error.message);
-        res.status(error.response?.status || 500).json(
-            error.response?.data || { error: 'Error en reseñas' }
-        );
-    }
-});
-
-// POST para agregar reseñas
-app.post('/api/reviews/addReview', async (req, res) => {
-    try {
-        console.log('📝 Agregando reseña:', req.body);
-        
-        const fullUrl = `${SERVICES.reviews}/addReview`;
-        console.log('🔗 Enviando a:', fullUrl);
-        
-        const response = await axios.post(fullUrl, req.body);
-        res.status(response.status).json(response.data);
-    } catch (error) {
-        console.error('  Error al agregar reseña:', error.message);
-        res.status(error.response?.status || 500).json(
-            error.response?.data || { error: 'Error al agregar reseña' }
-        );
-    }
-});
-
-
-// ===== RUTAS DE RESERVAS ===?====
-
-// ✅ PRIMERO: La ruta específica
-app.get('/api/reviews/getReviews', async (req, res) => {
-    try {
-        console.log('    req.query:', req.query);
-        console.log('    req.url:', req.url);
-        console.log('    req.originalUrl:', req.originalUrl);
-        
-        const id_reserva = req.query.id_reserva;
-        console.log('ID recibido:', id_reserva);
-        
-        if (!id_reserva) {
-            return res.status(400).json({ error: 'id_reserva es requerido' });
-        }
-
-        const fullUrl = `${SERVICES.reviews}/getReviews?id_reserva=${id_reserva}`;
-        console.log('🔗 Enviando a:', fullUrl);
-        
-        const response = await axios.get(fullUrl);
-        res.status(response.status).json(response.data);
-    } catch (error) {
-        console.error('Error:', error.message);
-        res.status(error.response?.status || 500).json(
-            error.response?.data || { error: 'Error en reseñas' }
-        );
-    }
-});
-
-app.use('/api/reviews', async (req, res) => {
-    try {
-        const response = await axios({
-            method: req.method,
-            url: `${SERVICES.reviews}${req.path}`,
-            data: req.body,
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-        res.status(response.status).json(response.data);
-    } catch (error) {
-        res.status(error.response?.status || 500).json(
-            error.response?.data || { error: 'Error en el servicio de calificaciones' }
-        );
-    }
-});
-
-
+// ===== MANEJO DE ERRORES =====
 app.use((err, req, res, next) => {
-    console.error('Error no manejado:', err);
+    console.error('❌ Error no manejado:', err);
     res.status(500).json({ error: 'Error interno del servidor' });
 });
 

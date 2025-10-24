@@ -124,34 +124,44 @@ app.post("/uploadImage", upload.single("image"), async (req, res) => {
 });
 
 
-// ==================== READ ====================
 app.get("/getHotelData", async (req, res) => {
-    try {
-        const { data, error } = await supabase
-            .from('hosteleria')
-            .select('*');
+  try {
+    const { data, error } = await supabase
+      .from('hosteleria')
+      .select(`
+        *,
+        direcciones (
+          ciudad,
+          estado,
+          pais,
+          calle,
+          colonia,
+          numero_exterior,
+          numero_interior
+        )
+      `);
 
-        if (error) {
-            return res.status(500).json({
-                success: false,
-                error: error.message
-            });
-        }
-
-        return res.status(200).json({
-            success: true,
-            count: data?.length || 0,
-            data: data
-        });
-
-    } catch (error) {
-        console.error('  Error del servidor:', error);
-        return res.status(500).json({
-            success: false,
-            error: error.message
-        });
+    if (error) {
+      return res.status(500).json({
+        success: false,
+        error: error.message,
+      });
     }
+
+    return res.status(200).json({
+      success: true,
+      count: data?.length || 0,
+      data: data,
+    });
+  } catch (error) {
+    console.error('Error del servidor:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
 });
+
 
 // ==================== CREATE ====================
 app.post("/createHotel", async (req, res) => {

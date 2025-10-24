@@ -80,9 +80,9 @@ app.post("/register", async (req, res) => {
     const { nombre, apellido_p, apellido_m, email, password, telefono } = req.body;
 
     if (!nombre || !apellido_p || !apellido_m || !email || !password || !telefono) {
-        return res.status(400).json({ 
+        return res.status(400).json({
             success: false,
-            error: "Todos los campos son requeridos" 
+            error: "Todos los campos son requeridos"
         });
     }
 
@@ -95,9 +95,9 @@ app.post("/register", async (req, res) => {
             .single();
 
         if (usuarioExistente) {
-            return res.status(400).json({ 
-                success: false, 
-                error: "El email ya está registrado" 
+            return res.status(400).json({
+                success: false,
+                error: "El email ya está registrado"
             });
         }
 
@@ -118,9 +118,9 @@ app.post("/register", async (req, res) => {
 
         if (errorUsuario) {
             console.error('Error al crear usuario:', errorUsuario);
-            return res.status(500).json({ 
-                success: false, 
-                error: errorUsuario.message 
+            return res.status(500).json({
+                success: false,
+                error: errorUsuario.message
             });
         }
 
@@ -136,9 +136,9 @@ app.post("/register", async (req, res) => {
 
         if (errorPerfil) {
             console.error('Error al crear perfil:', errorPerfil);
-            return res.status(500).json({ 
-                success: false, 
-                error: errorPerfil.message 
+            return res.status(500).json({
+                success: false,
+                error: errorPerfil.message
             });
         }
 
@@ -154,9 +154,9 @@ app.post("/register", async (req, res) => {
         });
     } catch (error) {
         console.error('Error en registro:', error);
-        return res.status(500).json({ 
-            success: false, 
-            error: "Error al registrar usuario" 
+        return res.status(500).json({
+            success: false,
+            error: "Error al registrar usuario"
         });
     }
 });
@@ -229,17 +229,17 @@ app.post('/google-login', async (req, res) => {
         console.log('\n========== GOOGLE LOGIN DEBUG ==========');
         console.log('1. GOOGLE_CLIENT_ID en backend:', GOOGLE_CLIENT_ID);
         console.log('2. Credential recibido (primeros 50 chars):', credential?.substring(0, 50));
-        
+
         // Decodificar el token para ver el audience
         if (credential) {
             try {
                 const base64Url = credential.split('.')[1];
                 const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-                const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+                const jsonPayload = decodeURIComponent(atob(base64).split('').map(function (c) {
                     return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
                 }).join(''));
                 const decoded = JSON.parse(jsonPayload);
-                
+
                 console.log('3. Audience (aud) en el token:', decoded.aud);
                 console.log('4. Issuer (iss) en el token:', decoded.iss);
                 console.log('5. ¿Coinciden?', decoded.aud === GOOGLE_CLIENT_ID);
@@ -266,12 +266,12 @@ app.post('/google-login', async (req, res) => {
 
         // Verificar el token de Google
         const client = new OAuth2Client(GOOGLE_CLIENT_ID);
-        
+
         const ticket = await client.verifyIdToken({
             idToken: credential,
             audience: GOOGLE_CLIENT_ID
         });
-        
+
         const payload = ticket.getPayload();
         const { email, name, picture, sub: googleId } = payload;
 
@@ -370,9 +370,9 @@ app.post('/google-login', async (req, res) => {
 // Error handler
 app.use((err, req, res, next) => {
     console.error('Unhandled error:', err);
-    res.status(500).json({ 
+    res.status(500).json({
         success: false,
-        error: "Error interno del servidor" 
+        error: "Error interno del servidor"
     });
 });
 

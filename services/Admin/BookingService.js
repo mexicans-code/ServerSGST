@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import cors from 'cors';
 import dotenv from 'dotenv';
 
-dotenv.config({ path: '../../.env' });
+dotenv.config();
 
 const supabase = createClient(
     process.env.SUPABASE_URL,
@@ -660,6 +660,13 @@ app.delete("/deleteBooking/:id", async (req, res) => {
         });
     }
 });
+
+
+// ==================== GET ALL DATES FROM BOOKINGS ====================
+
+
+
+
 
 // ==================== GET ALL EXPERIENCES ====================
 app.get("/getExperiences", async (req, res) => {
