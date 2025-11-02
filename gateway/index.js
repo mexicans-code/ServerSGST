@@ -289,6 +289,18 @@ app.delete('/api/booking/deleteBooking/:id', async (req, res) => {
     }
 });
 
+app.put('/api/booking/cancelBooking/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const response = await axios.put(`${SERVICES.adminBooking}/cancelBooking/${id}`, req.body);
+        res.status(response.status).json(response.data);
+    } catch (error) {
+        res.status(error.response?.status || 500).json(
+            error.response?.data || { error: 'Error en el servicio de reservas' }
+        );
+    }
+});
+
 app.get('/api/booking/getExperiences', async (req, res) => {
     try {
         const response = await axios.get(`${SERVICES.adminBooking}/getExperiences`);
@@ -323,10 +335,11 @@ app.post('/api/adminTouristExperiences/createTouristExperience', async (req, res
     }
 });
 
-app.put('/api/adminTouristExperiences/updateTouristExperience/:id', async (req, res) => {
+
+app.put('/api/adminTouristExperiences/updateExperience/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const response = await axios.put(`${SERVICES.adminTouristExperiences}/updateTouristExperience/${id}`, req.body);
+        const response = await axios.put(`${SERVICES.adminTouristExperiences}/updateExperience/${id}`, req.body);
         res.status(response.status).json(response.data);
     } catch (error) {
         res.status(error.response?.status || 500).json(

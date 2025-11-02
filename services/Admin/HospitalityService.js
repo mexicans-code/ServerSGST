@@ -4,6 +4,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import multer from 'multer';
 import { v2 as cloudinary } from 'cloudinary';
+import jwt from 'jsonwebtoken';
 
 dotenv.config({ path: '../../.env' });
 
@@ -125,10 +126,10 @@ app.post("/uploadImage", upload.single("image"), async (req, res) => {
 
 
 app.get("/getHotelData", async (req, res) => {
-  try {
-    const { data, error } = await supabase
-      .from('hosteleria')
-      .select(`
+    try {
+        const { data, error } = await supabase
+            .from('hosteleria')
+            .select(`
         *,
         direcciones (
           ciudad,
@@ -141,25 +142,25 @@ app.get("/getHotelData", async (req, res) => {
         )
       `);
 
-    if (error) {
-      return res.status(500).json({
-        success: false,
-        error: error.message,
-      });
-    }
+        if (error) {
+            return res.status(500).json({
+                success: false,
+                error: error.message,
+            });
+        }
 
-    return res.status(200).json({
-      success: true,
-      count: data?.length || 0,
-      data: data,
-    });
-  } catch (error) {
-    console.error('Error del servidor:', error);
-    return res.status(500).json({
-      success: false,
-      error: error.message,
-    });
-  }
+        return res.status(200).json({
+            success: true,
+            count: data?.length || 0,
+            data: data,
+        });
+    } catch (error) {
+        console.error('Error del servidor:', error);
+        return res.status(500).json({
+            success: false,
+            error: error.message,
+        });
+    }
 });
 
 
@@ -265,25 +266,86 @@ app.post("/createHotel", async (req, res) => {
 // ==================== UPDATE ====================
 app.put("/updateHotel/:id", async (req, res) => {
     const { id } = req.params;
-    const { id_anfitrion, nombre, descripcion, precio_por_noche, capacidad, ubicacion, image, estado } = req.body;
+    const { nombre, descripcion, precio_por_noche, habitaciones, banos, capacidad, estado, direccion } = req.body;
+
+    if (!nombre && !descripcion && !precio_por_noche && !habitaciones && !banos && !capacidad && !estado && !direccion) {
+        return res.status(400).json({
+            success: false,
+            error: "Debe proporcionar al menos un campo para actualizar"
+        });
+    }
 
     try {
-        const updateData = {
-            id_anfitrion,
-            nombre,
-            descripcion,
-            precio_por_noche,
-            capacidad,
-            ubicacion,
-            image,
-            estado
-        };
+        const { data: propertyData, error: propertyError } = await supabase
+            .from('hosteleria')
+            .select('id_direccion')
+            .eq('id_hosteleria', id)
+            .single();
+
+        if (propertyError || !propertyData) {
+            return res.status(404).json({
+                success: false,
+                error: "Propiedad no encontrada"
+            });
+        }
+
+        if (direccion && propertyData.id_direccion) {
+            const updateDireccion = {};
+            if (direccion.calle !== undefined) updateDireccion.calle = direccion.calle;
+            if (direccion.ciudad !== undefined) updateDireccion.ciudad = direccion.ciudad;
+            if (direccion.estado !== undefined) updateDireccion.estado = direccion.estado;
+            if (direccion.pais !== undefined) updateDireccion.pais = direccion.pais;
+            if (direccion.colonia !== undefined) updateDireccion.colonia = direccion.colonia;
+            if (direccion.numero_exterior !== undefined) updateDireccion.numero_exterior = direccion.numero_exterior;
+            if (direccion.numero_interior !== undefined) updateDireccion.numero_interior = direccion.numero_interior;
+
+            const { error: direccionError } = await supabase
+                .from('direcciones')
+                .update(updateDireccion)
+                .eq('id_direccion', propertyData.id_direccion);
+
+            if (direccionError) {
+                return res.status(500).json({
+                    success: false,
+                    error: `Error al actualizar dirección: ${direccionError.message}`
+                });
+            }
+        }
+
+        const updateHosteleria = {};
+        if (nombre !== undefined) updateHosteleria.nombre = nombre;
+        if (descripcion !== undefined) updateHosteleria.descripcion = descripcion;
+        if (precio_por_noche !== undefined) {
+            if (precio_por_noche < 0) {
+                return res.status(400).json({
+                    success: false,
+                    error: "El precio por noche no puede ser negativo"
+                });
+            }
+            updateHosteleria.precio_por_noche = precio_por_noche;
+        }
+        if (habitaciones !== undefined) updateHosteleria.habitaciones = habitaciones;
+        if (banos !== undefined) updateHosteleria.banos = banos;
+        if (capacidad !== undefined) updateHosteleria.capacidad = capacidad;
+        if (estado !== undefined) {
+            const estadosValidos = ['activo', 'inactivo', 'pendiente'];
+            if (!estadosValidos.includes(estado)) {
+                return res.status(400).json({
+                    success: false,
+                    error: `Estado inválido. Estados permitidos: ${estadosValidos.join(', ')}`
+                });
+            }
+            updateHosteleria.estado = estado;
+        }
 
         const { data, error } = await supabase
             .from('hosteleria')
-            .update(updateData)
+            .update(updateHosteleria)
             .eq('id_hosteleria', id)
-            .select('*')
+            .select(`
+        *,
+        direcciones (*)
+      `)
             .single();
 
         if (error) {
@@ -293,17 +355,13 @@ app.put("/updateHotel/:id", async (req, res) => {
             });
         }
 
-        if (!data) {
-            return res.status(404).json({
-                success: false,
-                message: "Hotel no encontrado"
-            });
-        }
-
         return res.status(200).json({
             success: true,
-            message: "Hotel actualizado exitosamente",
-            data: data
+            message: "Propiedad actualizada exitosamente",
+            data: {
+                ...data,
+                direccion: data.direcciones
+            }
         });
 
     } catch (error) {
@@ -320,6 +378,26 @@ app.delete("/deleteHotel/:id", async (req, res) => {
     const { id } = req.params;
 
     try {
+        // Primero verificar si hay reservas asociadas
+        const { data: reservas, error: checkError } = await supabase
+            .from('reserva')
+            .select('id_reserva')
+            .eq('id_hosteleria', id);
+
+        if (checkError) {
+            console.error('Error al verificar reservas:', checkError);
+        }
+
+        // Si hay reservas, no permitir la eliminación
+        if (reservas && reservas.length > 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'No se puede eliminar la propiedad porque tiene reservas asociadas',
+                code: 'HAS_BOOKINGS'
+            });
+        }
+
+        // Si no hay reservas, proceder con la eliminación
         const { data, error } = await supabase
             .from('hosteleria')
             .delete()
@@ -328,6 +406,15 @@ app.delete("/deleteHotel/:id", async (req, res) => {
             .single();
 
         if (error) {
+            // Capturar específicamente el error de foreign key constraint
+            if (error.code === '23503' || error.message.includes('foreign key constraint')) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'No se puede eliminar la propiedad porque tiene reservas asociadas',
+                    code: 'HAS_BOOKINGS'
+                });
+            }
+
             return res.status(500).json({
                 success: false,
                 error: error.message
@@ -349,12 +436,23 @@ app.delete("/deleteHotel/:id", async (req, res) => {
 
     } catch (error) {
         console.error('Error del servidor:', error);
+
+        // Capturar el error de constraint en el catch también
+        if (error.code === '23503' || error.message.includes('foreign key constraint')) {
+            return res.status(400).json({
+                success: false,
+                message: 'No se puede eliminar la propiedad porque tiene reservas asociadas',
+                code: 'HAS_BOOKINGS'
+            });
+        }
+
         return res.status(500).json({
             success: false,
             error: error.message
         });
     }
 });
+
 
 // ==================== DELETE IMAGE ====================
 app.delete("/deleteImage/:publicId", async (req, res) => {
@@ -418,21 +516,51 @@ app.get("/getHostData/:id", async (req, res) => {
 app.post("/convertirseEnAnfitrion", async (req, res) => {
     const { id_usuario } = req.body;
 
+    // Validación del id_usuario
+    if (!id_usuario) {
+        return res.status(400).json({
+            success: false,
+            error: "Se requiere el ID de usuario"
+        });
+    }
+
     try {
+        // Verificar si el usuario ya es anfitrión
         const { data: existente } = await supabase
             .from('usuario')
-            .select('rol')
+            .select('*')
             .eq('id_usuario', id_usuario)
             .single();
 
-        if (existente && existente.rol === 'anfitrion') {
-            return res.status(200).json({
-                success: true,
-                message: "Ya eres anfitrión",
-                id_usuario: id_usuario
+        if (!existente) {
+            return res.status(404).json({
+                success: false,
+                error: "Usuario no encontrado"
             });
         }
 
+        if (existente.rol === 'anfitrion') {
+            // Generar token aunque ya sea anfitrión (por si acaso)
+            const token = jwt.sign(
+                {
+                    id_usuario: existente.id_usuario,
+                    email: existente.email,
+                    nombre: existente.nombre,
+                    rol: 'anfitrion'
+                },
+                process.env.JWT_SECRET, // Tu clave secreta del archivo .env
+                { expiresIn: '24h' }
+            );
+
+            return res.status(200).json({
+                success: true,
+                message: "Ya eres anfitrión",
+                data: existente,
+                token: token
+            });
+        }
+
+        // Actualizar el rol a anfitrión
         const { data, error } = await supabase
             .from('usuario')
             .update({ rol: 'anfitrion' })
@@ -447,10 +575,23 @@ app.post("/convertirseEnAnfitrion", async (req, res) => {
             });
         }
 
+        // Generar NUEVO token JWT con el rol actualizado
+        const newToken = jwt.sign(
+            {
+                id_usuario: data.id_usuario,
+                email: data.email,
+                nombre: data.nombre,
+                rol: 'anfitrion' // Rol actualizado
+            },
+            process.env.JWT_SECRET, // Tu clave secreta del archivo .env
+            { expiresIn: '24h' } // Tiempo de expiración (ajusta según necesites)
+        );
+
         return res.status(200).json({
             success: true,
             message: "¡Ahora eres anfitrión!",
-            data: data
+            data: data,
+            token: newToken // Devolver el nuevo token
         });
 
     } catch (error) {

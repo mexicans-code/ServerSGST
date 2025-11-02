@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import cors from 'cors';
 import dotenv from 'dotenv';
 
-dotenv.config();
+dotenv.config({ path: '../../.env' });
 
 const supabase = createClient(
     process.env.SUPABASE_URL,
@@ -184,6 +184,121 @@ app.get("/getBookings", async (req, res) => {
         });
     }
 });
+
+// ==================== UPDATE BOOKING ====================
+app.put("/api/hospitality/updateProperty/:id", async (req, res) => {
+    const { id } = req.params;
+    const { nombre, descripcion, precio_por_noche, habitaciones, banos, capacidad, estado, direccion } = req.body;
+
+    // Validar que al menos un campo esté presente
+    if (!nombre && !descripcion && !precio_por_noche && !habitaciones && !banos && !capacidad && !estado && !direccion) {
+        return res.status(400).json({
+            success: false,
+            error: "Debe proporcionar al menos un campo para actualizar"
+        });
+    }
+
+    try {
+        // Primero, obtener el id_direccion de la propiedad
+        const { data: propertyData, error: propertyError } = await supabase
+            .from('hosteleria')
+            .select('id_direccion')
+            .eq('id_hosteleria', id)
+            .single();
+
+        if (propertyError || !propertyData) {
+            return res.status(404).json({
+                success: false,
+                error: "Propiedad no encontrada"
+            });
+        }
+
+        // Actualizar la tabla de direcciones si se proporcionaron datos de dirección
+        if (direccion && propertyData.id_direccion) {
+            const updateDireccion = {};
+            if (direccion.calle !== undefined) updateDireccion.calle = direccion.calle;
+            if (direccion.ciudad !== undefined) updateDireccion.ciudad = direccion.ciudad;
+            if (direccion.estado !== undefined) updateDireccion.estado = direccion.estado;
+            if (direccion.pais !== undefined) updateDireccion.pais = direccion.pais;
+            if (direccion.colonia !== undefined) updateDireccion.colonia = direccion.colonia;
+            if (direccion.numero_exterior !== undefined) updateDireccion.numero_exterior = direccion.numero_exterior;
+            if (direccion.numero_interior !== undefined) updateDireccion.numero_interior = direccion.numero_interior;
+
+            const { error: direccionError } = await supabase
+                .from('direcciones')
+                .update(updateDireccion)
+                .eq('id_direccion', propertyData.id_direccion);
+
+            if (direccionError) {
+                return res.status(500).json({
+                    success: false,
+                    error: `Error al actualizar dirección: ${direccionError.message}`
+                });
+            }
+        }
+
+        // Actualizar la tabla de hostelería
+        const updateHosteleria = {};
+        if (nombre !== undefined) updateHosteleria.nombre = nombre;
+        if (descripcion !== undefined) updateHosteleria.descripcion = descripcion;
+        if (precio_por_noche !== undefined) {
+            if (precio_por_noche < 0) {
+                return res.status(400).json({
+                    success: false,
+                    error: "El precio por noche no puede ser negativo"
+                });
+            }
+            updateHosteleria.precio_por_noche = precio_por_noche;
+        }
+        if (habitaciones !== undefined) updateHosteleria.habitaciones = habitaciones;
+        if (banos !== undefined) updateHosteleria.banos = banos;
+        if (capacidad !== undefined) updateHosteleria.capacidad = capacidad;
+        if (estado !== undefined) {
+            const estadosValidos = ['activo', 'inactivo'];
+            if (!estadosValidos.includes(estado)) {
+                return res.status(400).json({
+                    success: false,
+                    error: `Estado inválido. Estados permitidos: ${estadosValidos.join(', ')}`
+                });
+            }
+            updateHosteleria.estado = estado;
+        }
+
+        const { data, error } = await supabase
+            .from('hosteleria')
+            .update(updateHosteleria)
+            .eq('id_hosteleria', id)
+            .select(`
+        *,
+        direcciones (*)
+      `)
+            .single();
+
+        if (error) {
+            return res.status(500).json({
+                success: false,
+                error: error.message
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Propiedad actualizada exitosamente",
+            data: {
+                ...data,
+                direccion: data.direcciones
+            }
+        });
+
+    } catch (error) {
+        console.error('Error del servidor:', error);
+        return res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
 
 // ==================== GET BOOKING BY ID ====================
 app.get("/getBooking/:id", async (req, res) => {
@@ -543,59 +658,89 @@ app.put("/updateBooking/:id", async (req, res) => {
 });
 
 // ==================== CANCEL BOOKING ====================
-app.patch("/cancelBooking/:id", async (req, res) => {
+app.put("/cancelBooking/:id", async (req, res) => {
     const { id } = req.params;
-    const { motivo } = req.body;
 
     try {
-        // Verificar que la reserva existe y su estado actual
-        const { data: reservaActual, error: checkError } = await supabase
-            .from('reserva')
-            .select('estado')
-            .eq('id_reserva', id)
-            .single();
+        // Convertir a número por si acaso
+        const reservaId = parseInt(id, 10);
 
-        if (checkError || !reservaActual) {
-            return res.status(404).json({
+        console.log('Cancelando reserva ID:', reservaId);
+
+        // PASO 1: Buscar la reserva (sin joins complicados primero)
+        const { data: reservas, error: fetchError } = await supabase
+            .from('reserva')
+            .select('*')
+            .eq('id_reserva', reservaId);
+
+        console.log('Reservas encontradas:', reservas);
+        console.log('Error búsqueda:', fetchError);
+
+        if (fetchError) {
+            console.error('Error al buscar:', fetchError);
+            return res.status(500).json({
                 success: false,
-                error: "Reserva no encontrada"
+                message: "Error al buscar la reserva",
+                error: fetchError.message
             });
         }
 
-        // No permitir cancelar reservas ya completadas o canceladas
+        if (!reservas || reservas.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Reserva no encontrada"
+            });
+        }
+
+        const reservaActual = reservas[0];
+
         if (reservaActual.estado === 'cancelada') {
             return res.status(400).json({
                 success: false,
-                error: "La reserva ya está cancelada"
+                message: "La reserva ya está cancelada"
             });
         }
 
         if (reservaActual.estado === 'completada') {
             return res.status(400).json({
                 success: false,
-                error: "No se puede cancelar una reserva completada"
+                message: "No se puede cancelar una reserva completada"
             });
         }
 
-        const { data, error } = await supabase
+        /*
+        const fechaInicio = new Date(reservaActual.fecha_inicio);
+        const ahora = new Date();
+        
+        if (fechaInicio < ahora) {
+            return res.status(400).json({
+                success: false,
+                message: "No se puede cancelar una reserva que ya comenzó"
+            });
+        }
+        */
+
+        const { data: updated, error: updateError } = await supabase
             .from('reserva')
             .update({ estado: 'cancelada' })
-            .eq('id_reserva', id)
-            .select('*')
-            .single();
+            .eq('id_reserva', reservaId)
+            .select();
 
-        if (error) {
+        console.log('Resultado actualización:', updated);
+        console.log('Error actualización:', updateError);
+
+        if (updateError) {
+            console.error('Error al actualizar:', updateError);
             return res.status(500).json({
                 success: false,
-                error: error.message
+                error: updateError.message
             });
         }
 
         return res.status(200).json({
             success: true,
             message: "Reserva cancelada exitosamente",
-            data: data,
-            motivo: motivo || "No especificado"
+            data: updated[0]
         });
 
     } catch (error) {
@@ -606,6 +751,7 @@ app.patch("/cancelBooking/:id", async (req, res) => {
         });
     }
 });
+
 
 // ==================== DELETE BOOKING ====================
 app.delete("/deleteBooking/:id", async (req, res) => {
