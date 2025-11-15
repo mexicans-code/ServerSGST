@@ -20,6 +20,7 @@ const SERVICES = {
     chat: process.env.CHAT_SERVICE_URL || 'http://localhost:3008',
     adminTouristExperiences: process.env.ADMIN_TOURIST_EXPERIENCES_SERVICE_URL || 'http://localhost:3009',
     reviews: process.env.REVIEWS_SERVICE_URL || 'http://localhost:3010',
+    dashboardData: process.env.DASHBOARD_DATA_SERVICE_URL || 'http://localhost:3011',
 };
 
 app.use(cors());
@@ -462,6 +463,102 @@ app.use('/api/chat', verifyToken, async (req, res) => {
     } catch (error) {
         res.status(error.response?.status || 500).json(
             error.response?.data || { error: 'Error en el servicio de chat' }
+        );
+    }
+});
+
+// ====== RUTAS DEL DASHBOARD (MICROSERVICIO 3011) ======
+app.get('/api/dashboard/resumen', async (req, res) => {
+    try {
+        const response = await axios.get(`${SERVICES.dashboardData}/dashboardResumen`);
+        res.status(response.status).json(response.data);
+    } catch (error) {
+        console.error('❌ Error en Gateway - dashboardResumen:', error.message);
+        res.status(error.response?.status || 500).json(
+            error.response?.data || { error: 'Error en el servicio dashboardResumen' }
+        );
+    }
+});
+
+app.get('/api/dashboard/resenas', async (req, res) => {
+    try {
+        const response = await axios.get(`${SERVICES.dashboardData}/getResenas`);
+        res.status(response.status).json(response.data);
+    } catch (error) {
+        console.error('❌ Error en Gateway - getResenas:', error.message);
+        res.status(error.response?.status || 500).json(
+            error.response?.data || { error: 'Error en el servicio getResenas' }
+        );
+    }
+});
+
+app.get('/api/dashboard/ingresos-hosteleria', async (req, res) => {
+    try {
+        const response = await axios.get(`${SERVICES.dashboardData}/getIngresosHosteleria`);
+        res.status(response.status).json(response.data);
+    } catch (error) {
+        console.error('❌ Error en Gateway - getIngresosHosteleria:', error.message);
+        res.status(error.response?.status || 500).json(
+            error.response?.data || { error: 'Error en el servicio getIngresosHosteleria' }
+        );
+    }
+});
+
+app.get('/api/dashboard/ingresos-anfitrion', async (req, res) => {
+    try {
+        const response = await axios.get(`${SERVICES.dashboardData}/getIngresosAnfitrion`);
+        res.status(response.status).json(response.data);
+    } catch (error) {
+        console.error('❌ Error en Gateway - getIngresosAnfitrion:', error.message);
+        res.status(error.response?.status || 500).json(
+            error.response?.data || { error: 'Error en el servicio getIngresosAnfitrion' }
+        );
+    }
+});
+
+// Obtener datos de hotelería filtrados por anfitrión
+app.get('/api/dashboard/hotelData/:id_anfitrion', async (req, res) => {
+    try {
+        const { id_anfitrion } = req.params;
+        const response = await axios.get(`${SERVICES.dashboardData}/getHotelData/${id_anfitrion}`);
+        res.status(response.status).json(response.data);
+    } catch (error) {
+        console.error('❌ Error en Gateway - getHotelData:', error.message);
+        res.status(error.response?.status || 500).json(
+            error.response?.data || { error: 'Error en el servicio getHotelData' }
+        );
+    }
+});
+
+// Obtener experiencias turísticas filtradas por anfitrión
+app.get('/api/dashboard/touristExperiences/:id_anfitrion', async (req, res) => {
+    try {
+        const { id_anfitrion } = req.params;
+        const response = await axios.get(`${SERVICES.dashboardData}/getTouristExperiences/${id_anfitrion}`);
+        res.status(response.status).json(response.data);
+    } catch (error) {
+        console.error('❌ Error en Gateway - getTouristExperiences:', error.message);
+        res.status(error.response?.status || 500).json(
+            error.response?.data || { error: 'Error en el servicio getTouristExperiences' }
+        );
+    }
+});
+// ==================== DASHBOARD ANFITRIÓN ====================
+app.get('/api/dashboardAnfitrion/:id_anfitrion', async (req, res) => {
+    try {
+        const { id_anfitrion } = req.params;
+
+        // Llamada al microservicio de dashboardData (que está en el puerto 3011)
+        const response = await axios.get(`${process.env.DASHBOARD_DATA_SERVICE_URL || 'http://localhost:3011'}/dashboardAnfitrion/${id_anfitrion}`);
+
+        // Reenviar la respuesta completa al cliente
+        res.status(response.status).json(response.data);
+
+    } catch (error) {
+        console.error('❌ Error en Gateway - dashboard anfitrión:', error.message);
+
+        res.status(error.response?.status || 500).json(
+            error.response?.data || { error: 'Error en el servicio de dashboard anfitrión' }
         );
     }
 });

@@ -1,0 +1,775 @@
+import express from "express";
+import { createClient } from "@supabase/supabase-js";
+import dotenv from "dotenv";
+import cors from "cors";
+import { google } from 'googleapis';
+import { OAuth2Client } from 'google-auth-library';
+dotenv.config({ path: '../.env' });
+
+import { MercadoPagoConfig, Payment } from 'mercadopago';
+import { enviarBoleto } from "./EmailService.js";
+
+// DEBUG
+console.log('🔍 Verificando variables de entorno de Google Calendar:');
+console.log('GOOGLE_CLIENT_EMAIL:', process.env.GOOGLE_CLIENT_EMAIL ? '✅ Cargada' : '❌ NO cargada');
+console.log('GOOGLE_CALENDAR_ID:', process.env.GOOGLE_CALENDAR_ID ? '✅ Cargada' : '❌ NO cargada');
+console.log('GOOGLE_PRIVATE_KEY:', process.env.GOOGLE_PRIVATE_KEY ? `✅ Cargada (${process.env.GOOGLE_PRIVATE_KEY.substring(0, 50)}...)` : '❌ NO cargada');
+
+const supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_ANON_KEY
+);
+
+// CRÍTICO: Procesar la clave privada ANTES de crear el JWT
+const rawPrivateKey = process.env.GOOGLE_PRIVATE_KEY;
+console.log('🔑 Raw GOOGLE_PRIVATE_KEY primeras líneas:', rawPrivateKey?.substring(0, 100));
+
+// Reemplazar los \n literales
+const GOOGLE_PRIVATE_KEY = rawPrivateKey ? rawPrivateKey.replace(/\\n/g, '\n') : null;
+const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL;
+const GOOGLE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID;
+
+console.log('🔑 Procesada GOOGLE_PRIVATE_KEY:', GOOGLE_PRIVATE_KEY ? `✅ (${GOOGLE_PRIVATE_KEY.substring(0, 50)}...)` : '❌ NO DISPONIBLE');
+
+if (!GOOGLE_PRIVATE_KEY || !GOOGLE_CLIENT_EMAIL || !GOOGLE_CALENDAR_ID) {
+    console.error('❌ ERROR CRÍTICO: Faltan variables de Google Calendar');
+    process.exit(1);
+}
+
+// Cliente JWT para autenticación con Google
+const jwtClient = new google.auth.JWT({
+    email: GOOGLE_CLIENT_EMAIL,
+    key: GOOGLE_PRIVATE_KEY,
+    scopes: ['https://www.googleapis.com/auth/calendar']
+});
+
+const oauth2Client = new OAuth2Client(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    'http://localhost:3000/callback' 
+);
+
+const app = express();
+const PORT = process.env.PORT || 3004;
+
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
+app.use(cors());
+
+app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+    next();
+});
+
+const client = new MercadoPagoConfig({
+    accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN
+});
+
+const paymentClient = new Payment(client);
+
+// Cola de emails y eventos pendientes
+const emailQueue = [];
+const calendarQueue = [];
+let processingEmails = false;
+let processingCalendar = false;
+
+// Función para crear evento en Google Calendar
+async function createCalendarEvent(eventData) {
+    try {
+        const { tipo, reservationId, hosteleria, experiencia, fecha_inicio, fecha_fin, usuarioData, fecha, participantes } = eventData;
+
+        console.log('📅 Creando evento en Google Calendar...');
+        console.log('   Tipo:', tipo);
+        console.log('   Email:', usuarioData.email);
+        console.log('   Fechas recibidas:', { fecha_inicio, fecha_fin, fecha });
+
+        // Autorizar el cliente JWT
+        await jwtClient.authorize();
+        console.log('✅ JWT cliente autorizado');
+
+        const calendar = google.calendar({
+            version: 'v3',
+            auth: jwtClient
+        });
+
+        // ✅ VALIDAR Y FORMATEAR FECHAS
+        let fechaInicioDateTime, fechaFinDateTime;
+
+        if (tipo === 'hosteleria' && fecha_inicio && fecha_fin) {
+            // Convertir "YYYY-MM-DD" a "YYYY-MM-DDTHH:mm:ss"
+            fechaInicioDateTime = new Date(`${fecha_inicio}T00:00:00`);
+            fechaFinDateTime = new Date(`${fecha_fin}T23:59:59`);
+        } else if (tipo === 'tourism' && fecha) {
+            fechaInicioDateTime = new Date(`${fecha}T09:00:00`); // 9 AM por defecto
+            const duracionHoras = experiencia?.duracion || 2;
+            fechaFinDateTime = new Date(fechaInicioDateTime.getTime() + duracionHoras * 60 * 60 * 1000);
+        } else {
+            throw new Error('Fechas inválidas o faltantes');
+        }
+
+        // Validar que las fechas sean válidas
+        if (isNaN(fechaInicioDateTime.getTime()) || isNaN(fechaFinDateTime.getTime())) {
+            throw new Error(`Fechas inválidas: inicio=${fecha_inicio}, fin=${fecha_fin}`);
+        }
+
+        console.log('✅ Fechas validadas:', {
+            inicio: fechaInicioDateTime.toISOString(),
+            fin: fechaFinDateTime.toISOString()
+        });
+
+        let event;
+
+        if (tipo === 'hosteleria') {
+            event = {
+                'summary': `Check-in: ${hosteleria.nombre}`,
+                'location': hosteleria.direccion || hosteleria.ubicacion || '',
+                'description': `Reserva #${reservationId}\nHuésped: ${usuarioData.nombre}\nEmail: ${usuarioData.email}`,
+                'start': {
+                    'dateTime': fechaInicioDateTime.toISOString(),
+                    'timeZone': 'America/Mexico_City',
+                },
+                'end': {
+                    'dateTime': fechaFinDateTime.toISOString(),
+                    'timeZone': 'America/Mexico_City',
+                },
+                'reminders': {
+                    'useDefault': false,
+                    'overrides': [
+                        { 'method': 'popup', 'minutes': 24 * 60 },
+                        { 'method': 'popup', 'minutes': 60 },
+                    ],
+                },
+                'colorId': '2'
+            };
+        } else {
+            event = {
+                'summary': `Tour: ${experiencia.nombre}`,
+                'location': experiencia.punto_encuentro || experiencia.ubicacion || '',
+                'description': `Reserva #${reservationId}\nParticipante: ${usuarioData.nombre}\nParticipantes: ${participantes || 1}\nEmail: ${usuarioData.email}`,
+                'start': {
+                    'dateTime': fechaInicioDateTime.toISOString(),
+                    'timeZone': 'America/Mexico_City',
+                },
+                'end': {
+                    'dateTime': fechaFinDateTime.toISOString(),
+                    'timeZone': 'America/Mexico_City',
+                },
+                'reminders': {
+                    'useDefault': false,
+                    'overrides': [
+                        { 'method': 'popup', 'minutes': 24 * 60 },
+                        { 'method': 'popup', 'minutes': 120 },
+                    ],
+                },
+                'colorId': '9'
+            };
+        }
+
+        console.log('📨 Enviando evento a Google Calendar API...');
+        const response = await calendar.events.insert({
+            calendarId: GOOGLE_CALENDAR_ID,
+            resource: event,
+            sendUpdates: 'none'
+        });
+
+        console.log(`✅ Evento creado en Google Calendar: ${response.data.htmlLink}`);
+        console.log(`   El evento está registrado en tu calendario empresarial`);
+
+        return response.data;
+    } catch (error) {
+        console.error('❌ Error al crear evento en Google Calendar:', error.message);
+        if (error.response) {
+            console.error('   Detalles:', error.response.data);
+        }
+        throw error;
+    }
+}
+
+
+// Procesar eventos de calendario en background
+async function processCalendarQueue() {
+    if (processingCalendar || calendarQueue.length === 0) return;
+
+    processingCalendar = true;
+    console.log(`📋 Procesando cola de calendarios (${calendarQueue.length} eventos)`);
+
+    while (calendarQueue.length > 0) {
+        const eventData = calendarQueue.shift();
+        try {
+            await createCalendarEvent(eventData);
+            console.log(`✅ Evento agregado a Calendar para reserva ${eventData.reservationId}`);
+        } catch (error) {
+            console.error(`⚠️ Error agregando evento a Calendar:`, error.message);
+        }
+    }
+
+    processingCalendar = false;
+}
+
+// Procesar emails en background
+async function processEmailQueue() {
+    if (processingEmails || emailQueue.length === 0) return;
+
+    processingEmails = true;
+
+    while (emailQueue.length > 0) {
+        const emailData = emailQueue.shift();
+        try {
+            await enviarBoleto(emailData);
+            console.log(`✅ Email enviado a ${emailData.email}`);
+        } catch (error) {
+            console.error(`⚠️ Error enviando email a ${emailData.email}:`, error.message);
+        }
+    }
+
+    processingEmails = false;
+}
+
+// Endpoint para procesar pagos con Mercado Pago
+app.post("/mercadopago", async (req, res) => {
+    const startTime = Date.now();
+
+    console.log('📦 BODY COMPLETO:', JSON.stringify(req.body, null, 2));
+
+    try {
+        const {
+            token,
+            issuer_id,
+            payment_method_id,
+            transaction_amount,
+            installments,
+            payer,
+            reserva,
+            reservationId,
+            usuarioData,
+            tipo,
+            pricing
+        } = req.body;
+
+        console.log('📥 Procesando pago con Mercado Pago...');
+        console.log('Tipo de reserva:', tipo);
+
+        let descripcion = '';
+        let metadata = {
+            reservation_id: reservationId,
+            user_id: usuarioData.id_usuario,
+            tipo: tipo || 'hosteleria'
+        };
+
+        if (tipo === 'tourism') {
+            const { experiencia } = req.body;
+            descripcion = `Reserva ${reservationId} - ${experiencia.nombre}`;
+            metadata.id_experiencia = reserva.id_experiencia;
+        } else {
+            const { hosteleria } = req.body;
+            descripcion = `Reserva ${reservationId} - ${hosteleria.nombre}`;
+            metadata.id_hosteleria = reserva.id_hosteleria;
+        }
+
+        const payment_data = {
+            token: token,
+            issuer_id: issuer_id,
+            payment_method_id: payment_method_id,
+            transaction_amount: Number(transaction_amount),
+            installments: Number(installments),
+            description: descripcion,
+            payer: {
+                email: payer.email,
+                identification: {
+                    type: payer.identification?.type || "RFC",
+                    number: payer.identification?.number || "XAXX010101000"
+                }
+            },
+            external_reference: reservationId,
+            metadata: metadata
+        };
+
+        const response = await paymentClient.create({ body: payment_data });
+        console.log(`✅ Respuesta de MP: ${response.status} (${Date.now() - startTime}ms)`);
+
+        if (response.status === 'approved') {
+            let id_reserva, id_pago;
+
+            if (tipo === 'tourism') {
+                const { experiencia } = req.body;
+
+                const { data: reservaData, error: reservaError } = await supabase
+                    .from('reserva')
+                    .insert([{
+                        id_usuario: reserva.id_usuario,
+                        id_exptouristica: reserva.id_exptouristica,
+                        id_hosteleria: null,
+                        fecha_inicio: null,
+                        fecha_fin: null,
+                        personas: null,
+                        estado: 'confirmada'
+                    }])
+                    .select('id_reserva')
+                    .single();
+
+                if (reservaError) throw reservaError;
+
+                id_reserva = reservaData.id_reserva;
+
+                const { data: pagoData, error: pagoError } = await supabase
+                    .from('pago')
+                    .insert([{
+                        id_reserva: id_reserva,
+                        monto: transaction_amount,
+                        metodo: 'mercadopago',
+                        fecha_pago: new Date().toISOString(),
+                        estado: 'completado',
+                        payment_id_mp: response.id
+                    }])
+                    .select('id_pago')
+                    .single();
+
+                if (pagoError) {
+                    await supabase.from('reserva').delete().eq('id_reserva', id_reserva);
+                    throw pagoError;
+                }
+
+                id_pago = pagoData.id_pago;
+
+                res.status(200).json({
+                    status: response.status,
+                    status_detail: response.status_detail,
+                    payment_id: response.id,
+                    reservationId: reservationId,
+                    id_reserva: id_reserva,
+                    id_pago: id_pago,
+                    tipo: 'tourism',
+                    message: 'Pago aprobado exitosamente'
+                });
+
+                // Encolar email
+                emailQueue.push({
+                    tipo: 'tourism',
+                    email: usuarioData.email,
+                    nombre: usuarioData.nombre,
+                    id_reserva: id_reserva,
+                    id_pago: id_pago,
+                    experiencia: experiencia,
+                    participantes: reserva.participantes,
+                    total: transaction_amount,
+                    reservationId: reservationId,
+                    punto_encuentro: experiencia.punto_encuentro
+                });
+
+                // Encolar evento de calendario
+                calendarQueue.push({
+                    tipo: 'tourism',
+                    reservationId: reservationId,
+                    experiencia: experiencia,
+                    fecha: reserva.fecha,
+                    usuarioData: usuarioData
+                });
+
+            } else {
+                const { hosteleria } = req.body;
+
+                const { data: reservaData, error: reservaError } = await supabase
+                    .from('reserva')
+                    .insert([{
+                        id_usuario: reserva.id_usuario,
+                        id_hosteleria: reserva.id_hosteleria,
+                        fecha_inicio: reserva.fecha_inicio,
+                        fecha_fin: reserva.fecha_fin,
+                        personas: reserva.personas,
+                        estado: 'confirmada'
+                    }])
+                    .select('id_reserva')
+                    .single();
+
+                if (reservaError) throw reservaError;
+
+                id_reserva = reservaData.id_reserva;
+
+                const { data: pagoData, error: pagoError } = await supabase
+                    .from('pago')
+                    .insert([{
+                        id_reserva: id_reserva,
+                        monto: transaction_amount,
+                        metodo: 'mercadopago',
+                        fecha_pago: new Date().toISOString(),
+                        estado: 'completado',
+                        payment_id_mp: response.id
+                    }])
+                    .select('id_pago')
+                    .single();
+
+                if (pagoError) {
+                    await supabase.from('reserva').delete().eq('id_reserva', id_reserva);
+                    throw pagoError;
+                }
+
+                id_pago = pagoData.id_pago;
+
+                res.status(200).json({
+                    status: response.status,
+                    status_detail: response.status_detail,
+                    payment_id: response.id,
+                    reservationId: reservationId,
+                    id_reserva: id_reserva,
+                    id_pago: id_pago,
+                    tipo: 'hosteleria',
+                    message: 'Pago aprobado exitosamente'
+                });
+
+                // Encolar email
+                emailQueue.push({
+                    tipo: 'hosteleria',
+                    email: usuarioData.email,
+                    nombre: usuarioData.nombre,
+                    id_reserva: id_reserva,
+                    id_pago: id_pago,
+                    hosteleria: hosteleria,
+                    fecha_inicio: reserva.fecha_inicio,
+                    fecha_fin: reserva.fecha_fin,
+                    total: transaction_amount,
+                    reservationId: reservationId,
+                    personas: reserva.personas
+                });
+
+                // Encolar evento de calendario
+                calendarQueue.push({
+                    tipo: 'hosteleria',
+                    reservationId: reservationId,
+                    hosteleria: hosteleria,
+                    fecha_inicio: reserva.fecha_inicio,
+                    fecha_fin: reserva.fecha_fin,
+                    usuarioData: usuarioData
+                });
+            }
+
+            // Procesar colas en background
+            setImmediate(() => {
+                processEmailQueue();
+                processCalendarQueue();
+            });
+
+        } else {
+            res.status(200).json({
+                status: response.status,
+                status_detail: response.status_detail,
+                payment_id: response.id,
+                message: 'Pago no aprobado'
+            });
+        }
+
+    } catch (error) {
+        console.error(`❌ Error con Mercado Pago (${Date.now() - startTime}ms):`, error);
+
+        if (!res.headersSent) {
+            res.status(500).json({
+                success: false,
+                message: "Error al procesar el pago",
+                error: error.message
+            });
+        }
+    }
+});
+
+app.post("/purchase", async (req, res) => {
+    const startTime = Date.now();
+
+    try {
+        const {
+            reservationId,
+            tipo,
+            reserva,
+            pago,
+            usuarioData,
+            experiencia,
+            hosteleria,
+            pricing
+        } = req.body;
+
+        console.log('📥 Procesando compra directa...');
+
+        let id_reserva, id_pago;
+
+        if (tipo === 'tourism') {
+            const { data: reservaData, error: reservaError } = await supabase
+                .from('reserva')
+                .insert([{
+                    id_usuario: reserva.id_usuario,
+                    id_exptouristica: reserva.id_experiencia,
+                    id_hosteleria: null,
+                    fecha_inicio: reserva.fecha,
+                    fecha_fin: null,
+                    personas: reserva.participantes,
+                    estado: reserva.estado || 'confirmada'
+                }])
+                .select('id_reserva')
+                .single();
+
+            if (reservaError) throw reservaError;
+            id_reserva = reservaData.id_reserva;
+
+            const { data: pagoData, error: pagoError } = await supabase
+                .from('pago')
+                .insert([{
+                    id_reserva: id_reserva,
+                    monto: pago.monto,
+                    metodo: pago.metodo,
+                    fecha_pago: pago.fecha_pago || new Date().toISOString(),
+                    estado: pago.estado || 'completado',
+                    payment_id_mp: null
+                }])
+                .select('id_pago')
+                .single();
+
+            if (pagoError) {
+                await supabase.from('reserva').delete().eq('id_reserva', id_reserva);
+                throw pagoError;
+            }
+
+            id_pago = pagoData.id_pago;
+
+            emailQueue.push({
+                tipo: 'tourism',
+                email: usuarioData.email,
+                nombre: usuarioData.nombre,
+                id_reserva: id_reserva,
+                id_pago: id_pago,
+                experiencia: experiencia,
+                participantes: reserva.participantes,
+                total: pago.monto,
+                reservationId: reservationId,
+                punto_encuentro: experiencia.punto_encuentro
+            });
+
+            calendarQueue.push({
+                tipo: 'tourism',
+                reservationId: reservationId,
+                experiencia: experiencia,
+                fecha: reserva.fecha,
+                participantes: reserva.participantes,
+                usuarioData: usuarioData
+            });
+
+        } else {
+            const { data: reservaData, error: reservaError } = await supabase
+                .from('reserva')
+                .insert([{
+                    id_usuario: reserva.id_usuario,
+                    id_hosteleria: reserva.id_hosteleria,
+                    fecha_inicio: reserva.fecha_inicio,
+                    fecha_fin: reserva.fecha_fin,
+                    personas: reserva.personas,
+                    estado: reserva.estado || 'confirmada'
+                }])
+                .select('id_reserva')
+                .single();
+
+            if (reservaError) throw reservaError;
+            id_reserva = reservaData.id_reserva;
+
+            const { data: pagoData, error: pagoError } = await supabase
+                .from('pago')
+                .insert([{
+                    id_reserva: id_reserva,
+                    monto: pago.monto,
+                    metodo: pago.metodo,
+                    fecha_pago: pago.fecha_pago || new Date().toISOString(),
+                    estado: pago.estado || 'completado',
+                    payment_id_mp: null
+                }])
+                .select('id_pago')
+                .single();
+
+            if (pagoError) {
+                await supabase.from('reserva').delete().eq('id_reserva', id_reserva);
+                throw pagoError;
+            }
+
+            id_pago = pagoData.id_pago;
+
+            emailQueue.push({
+                tipo: 'hosteleria',
+                email: usuarioData.email,
+                nombre: usuarioData.nombre,
+                id_reserva: id_reserva,
+                id_pago: id_pago,
+                hosteleria: hosteleria,
+                fecha_inicio: reserva.fecha_inicio,
+                fecha_fin: reserva.fecha_fin,
+                total: pago.monto,
+                reservationId: reservationId,
+                personas: reserva.personas
+            });
+
+            calendarQueue.push({
+                tipo: 'hosteleria',
+                reservationId: reservationId,
+                hosteleria: hosteleria,
+                fecha_inicio: reserva.fecha_inicio,
+                fecha_fin: reserva.fecha_fin,
+                usuarioData: usuarioData
+            });
+        }
+
+        setImmediate(() => {
+            processEmailQueue();
+            processCalendarQueue(); // Esto intentará crear sin OAuth por ahora
+        });
+
+        // ✅ RESPUESTA CON SEÑAL PARA SOLICITAR OAUTH
+        res.status(200).json({
+            success: true,
+            reservationId: reservationId,
+            id_reserva: id_reserva,
+            id_pago: id_pago,
+            tipo: tipo,
+            message: 'Compra procesada exitosamente',
+            needsGoogleCalendarAuth: true,
+            usuarioEmail: usuarioData.email
+        });
+
+        console.log(`✅ Compra procesada exitosamente (${Date.now() - startTime}ms)`);
+
+    } catch (error) {
+        console.error(`❌ Error al procesar compra (${Date.now() - startTime}ms):`, error);
+
+        if (!res.headersSent) {
+            res.status(500).json({
+                success: false,
+                message: "Error al procesar la compra",
+                error: error.message
+            });
+        }
+    }
+});
+
+app.post("/create-calendar-event", async (req, res) => {
+    try {
+        const { accessToken, reservationId, usuarioEmail, tipo, purchaseData } = req.body;
+
+        console.log('📅 Creando evento en ambos calendarios...');
+        
+        if (!accessToken) {
+            throw new Error('Access token no proporcionado');
+        }
+
+        // Crear cliente OAuth con el access token del usuario
+        const userAuth = new google.auth.OAuth2();
+        userAuth.setCredentials({ access_token: accessToken });
+
+        // Preparar fechas
+        let fechaInicioDateTime, fechaFinDateTime;
+
+        if (tipo === 'hosteleria') {
+            fechaInicioDateTime = new Date(`${purchaseData.fecha_inicio}T00:00:00`);
+            fechaFinDateTime = new Date(`${purchaseData.fecha_fin}T23:59:59`);
+        } else {
+            fechaInicioDateTime = new Date(`${purchaseData.fecha}T09:00:00`);
+            const duracionHoras = purchaseData.duracion || 2;
+            fechaFinDateTime = new Date(fechaInicioDateTime.getTime() + duracionHoras * 60 * 60 * 1000);
+        }
+
+        let event;
+
+        if (tipo === 'hosteleria') {
+            event = {
+                'summary': `Reserva: ${purchaseData.hosteleria?.nombre || 'Tu reserva'}`,
+                'location': purchaseData.hosteleria?.ubicacion || '',
+                'description': `Reserva #${reservationId}`,
+                'start': {
+                    'dateTime': fechaInicioDateTime.toISOString(),
+                    'timeZone': 'America/Mexico_City',
+                },
+                'end': {
+                    'dateTime': fechaFinDateTime.toISOString(),
+                    'timeZone': 'America/Mexico_City',
+                },
+                'reminders': {
+                    'useDefault': false,
+                    'overrides': [
+                        { 'method': 'email', 'minutes': 24 * 60 },
+                        { 'method': 'popup', 'minutes': 60 },
+                    ],
+                },
+                'colorId': '2'
+            };
+        } else {
+            event = {
+                'summary': `Tour: ${purchaseData.experiencia?.nombre || 'Tu experiencia'}`,
+                'location': purchaseData.experiencia?.punto_encuentro || '',
+                'description': `Reserva #${reservationId}`,
+                'start': {
+                    'dateTime': fechaInicioDateTime.toISOString(),
+                    'timeZone': 'America/Mexico_City',
+                },
+                'end': {
+                    'dateTime': fechaFinDateTime.toISOString(),
+                    'timeZone': 'America/Mexico_City',
+                },
+                'reminders': {
+                    'useDefault': false,
+                    'overrides': [
+                        { 'method': 'email', 'minutes': 24 * 60 },
+                        { 'method': 'popup', 'minutes': 120 },
+                    ],
+                },
+                'colorId': '9'
+            };
+        }
+
+        // ✅ 1️⃣ CREAR EN TU CALENDARIO EMPRESARIAL
+        console.log('📨 1️⃣ Creando en tu calendario empresarial...');
+        await jwtClient.authorize();
+        
+        const calendarEmpresa = google.calendar({
+            version: 'v3',
+            auth: jwtClient
+        });
+
+        const responseEmpresa = await calendarEmpresa.events.insert({
+            calendarId: GOOGLE_CALENDAR_ID,
+            resource: event,
+            sendUpdates: 'none'
+        });
+
+        console.log(`✅ Evento en empresa: ${responseEmpresa.data.htmlLink}`);
+
+        // ✅ 2️⃣ CREAR EN EL CALENDARIO DEL USUARIO
+        console.log('📨 2️⃣ Creando en calendario del usuario...');
+        
+        const calendarUsuario = google.calendar({
+            version: 'v3',
+            auth: userAuth
+        });
+
+        const responseUsuario = await calendarUsuario.events.insert({
+            calendarId: 'primary',
+            resource: event,
+            sendUpdates: 'none'
+        });
+
+        console.log(`✅ Evento en usuario: ${responseUsuario.data.htmlLink}`);
+
+        res.status(200).json({
+            success: true,
+            message: '✅ Evento creado en ambos calendarios',
+            empresarial: responseEmpresa.data.htmlLink,
+            usuario: responseUsuario.data.htmlLink
+        });
+
+    } catch (error) {
+        console.error('❌ Error creando evento:', error.message);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+
+
+
+app.listen(PORT, () => {
+    console.log(`🚀 Payment Service started on port ${PORT}`);
+    console.log(`📍 Health check: http://localhost:${PORT}/health`);
+    console.log(`⏰ Started at: ${new Date().toISOString()}`);
+});
