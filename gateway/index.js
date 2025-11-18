@@ -325,6 +325,22 @@ app.get('/api/adminTouristExperiences/getTouristExperiences', async (req, res) =
     }
 });
 
+app.get('/api/adminTouristExperiences/getTouristExperience/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const response = await axios.get(
+            `${SERVICES.adminTouristExperiences}/getTouristExperience/${id}`
+        );
+
+        res.status(response.status).json(response.data);
+    } catch (error) {
+        res.status(error.response?.status || 500).json(
+            error.response?.data || { error: 'Error en el servicio de experiencia turística' }
+        );
+    }
+});
+
 app.post('/api/adminTouristExperiences/createTouristExperience', async (req, res) => {
     try {
         const response = await axios.post(`${SERVICES.adminTouristExperiences}/createTouristExperience`, req.body);
