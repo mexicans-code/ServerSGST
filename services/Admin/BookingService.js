@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import cors from 'cors';
 import dotenv from 'dotenv';
 
-dotenv.config({ override: true });
+dotenv.config({ path: '../../.env' });
 
 const supabase = createClient(
     process.env.SUPABASE_URL,

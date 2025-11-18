@@ -22,9 +22,9 @@ const uploadToCloudinary = (buffer) => {
         folder: 'hotels',
         resource_type: 'image',
         transformation: [
-          { width: 1200, height: 800, crop: 'limit' },
-          { quality: 'auto' },
-          { fetch_format: 'auto' }
+          { width: 1200, height: 800, crop: 'limit' }, // Optimizar tamaño
+          { quality: 'auto' }, // Calidad automática
+          { fetch_format: 'auto' } // Formato automático (WebP cuando sea posible)
         ]
       },
       (error, result) => {
@@ -52,7 +52,7 @@ app.post("/uploadImage", upload.single('image'), async (req, res) => {
       success: true,
       message: 'Imagen subida exitosamente',
       imageUrl: result.secure_url,
-      publicId: result.public_id
+      publicId: result.public_id // Guardar para poder eliminarla después
     });
 
   } catch (error) {
