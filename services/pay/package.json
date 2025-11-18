@@ -1,0 +1,23 @@
+{
+  "name": "pay",
+  "version": "1.0.0",
+  "main": "EmailService.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.81.1",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mercadopago": "^2.10.0",
+    "multer": "^2.0.2",
+    "nodemailer": "^7.0.10"
+  }
+}

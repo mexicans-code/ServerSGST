@@ -6,7 +6,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import bcrypt from 'bcrypt';
 
-dotenv.config({ path: '../../.env' });
+dotenv.config({ override: true });
 
 const supabase = createClient(
     process.env.SUPABASE_URL,

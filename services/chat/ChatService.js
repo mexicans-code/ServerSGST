@@ -6,7 +6,7 @@ import { Server } from "socket.io";
 import { createServer } from "http";
 import jwt from "jsonwebtoken";
 
-dotenv.config({ path: '../.env' });
+dotenv.config({ override: true });
 
 const port = process.env.CHAT_PORT || 4000;
 const app = express();

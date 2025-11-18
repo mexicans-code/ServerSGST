@@ -1,0 +1,101 @@
+version: '3.9'
+services:
+
+  gateway:
+    build: ./gateway
+    ports:
+      - "3000:3000"
+    depends_on:
+      - hospitality
+      - auth
+      - pay
+      - booking
+      - admin-user
+      - admin-profile
+      - chat
+      - admin-tourist-experiences
+      - reviews
+      - dashboard-data
+    restart: always
+    environment:
+      - NODE_ENV=production
+
+  hospitality:
+    build: ./services/hospitality
+    ports:
+      - "3001:3001"
+    env_file:
+      - ./services/hospitality/.env
+    restart: always
+
+  auth:
+    build: ./services/Auth
+    ports:
+      - "3002:3002"
+    env_file:
+      - ./services/Auth/.env
+    restart: always
+
+  pay:
+    build: ./services/pay
+    ports:
+      - "3004:3004"
+    env_file:
+      - ./services/pay/.env
+    restart: always
+
+  admin-user:
+    build: ./services/adminUser
+    ports:
+      - "3005:3005"
+    env_file:
+      - ./services/adminUser/.env
+    restart: always
+
+  booking:
+    build: ./services/adminBooking
+    ports:
+      - "3006:3006"
+    env_file:
+      - ./services/adminBooking/.env
+    restart: always
+
+  admin-profile:
+    build: ./services/adminProfile
+    ports:
+      - "3007:3007"
+    env_file:
+      - ./services/adminProfile/.env
+    restart: always
+
+  chat:
+    build: ./services/chat
+    ports:
+      - "4000:4000"
+    env_file:
+      - ./services/chat/.env
+    restart: always
+
+  admin-tourist-experiences:
+    build: ./services/adminTouristExperiences
+    ports:
+      - "3009:3009"
+    env_file:
+      - ./services/adminTouristExperiences/.env
+    restart: always
+
+  reviews:
+    build: ./services/reviews
+    ports:
+      - "3010:3010"
+    env_file:
+      - ./services/reviews/.env
+    restart: always
+
+  dashboard-data:
+    build: ./services/dashboardData
+    ports:
+      - "3011:3011"
+    env_file:
+      - ./services/dashboardData/.env
+    restart: always

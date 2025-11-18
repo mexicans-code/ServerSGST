@@ -5,6 +5,8 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install --only=production
 
+EXPOSE 3000
+
 COPY . .
 
-CMD ["node", "gateway/index.js"]
+CMD ["node", "index.js"]

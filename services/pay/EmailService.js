@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
-dotenv.config({ path: '../.env' });
+
+dotenv.config({ override: true });
 
 const transporter = nodemailer.createTransport({
     service: 'gmail',

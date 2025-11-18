@@ -2,7 +2,9 @@ import express from "express";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 import cors from "cors";
-dotenv.config({ path: '../.env' });
+
+dotenv.config({ override: true });
+
 import { MercadoPagoConfig, Payment } from 'mercadopago';
 
 import { enviarBoleto } from "./EmailService.js";

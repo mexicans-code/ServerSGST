@@ -6,10 +6,16 @@ import { createClient } from '@supabase/supabase-js';
 import { OAuth2Client } from 'google-auth-library';
 import dotenv from 'dotenv';
 
-dotenv.config({ path: '../.env' });
+dotenv.config({ override: true });
 
-const JWT_SECRET = process.env.JWT_SECRET || 'tu-secret-key-super-seguro-cambialo-en-produccion';
+
+if (!process.env.JWT_SECRET) {
+    console.error('❌ ERROR CRÍTICO: JWT_SECRET no está definido');
+    process.exit(1);
+}
+
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+
 
 const supabase = createClient(
     process.env.SUPABASE_URL,
@@ -47,7 +53,7 @@ const generateToken = (usuario) => {
         nombre: usuario.nombre
     };
 
-    return jwt.sign(payload, JWT_SECRET, {
+    return jwt.sign(payload, process.env.JWT_SECRET, {
         expiresIn: '24h'
     });
 };
@@ -64,13 +70,14 @@ export const verifyToken = (req, res, next) => {
     }
 
     try {
-        const decoded = jwt.verify(token, JWT_SECRET);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
         req.usuario = decoded;
         next();
     } catch (error) {
         return res.status(401).json({
             success: false,
-            error: "Token inválido o expirado"
+            error: "Token inválido o expirado",
+            detalle: error.message
         });
     }
 };
@@ -87,7 +94,6 @@ app.post("/register", async (req, res) => {
     }
 
     try {
-        // Verificar si el email ya existe
         const { data: usuarioExistente } = await supabase
             .from('usuario')
             .select('email')
@@ -376,11 +382,9 @@ app.use((err, req, res, next) => {
     });
 });
 
-// Start server
 app.listen(PORT, () => {
     console.log(`✅ Server started on port ${PORT}`);
     console.log(`📡 Auth API available at: http://localhost:${PORT}`);
-    console.log(`🔐 JWT Secret configured: ${JWT_SECRET ? 'Yes' : 'No (using default)'}`);
+    console.log(`🔐 JWT_SECRET configurado: ${process.env.JWT_SECRET ? '✅ SÍ' : '❌ NO'}`);
     console.log(`🔑 Google OAuth configured: ${GOOGLE_CLIENT_ID ? 'Yes' : 'No'}`);
-    console.log(`🔑 GOOGLE_CLIENT_ID value: ${GOOGLE_CLIENT_ID}`);
 });
