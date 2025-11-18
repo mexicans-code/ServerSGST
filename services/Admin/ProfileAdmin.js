@@ -5,18 +5,7 @@ import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 
-dotenv.config({ override: true });
-
-console.log('🔍 Verificando variables de entorno...');
-console.log('SUPABASE_URL:', process.env.SUPABASE_URL ? '✅' : '❌');
-console.log('SUPABASE_ANON_KEY:', process.env.SUPABASE_ANON_KEY ? '✅' : '❌');
-console.log('JWT_SECRET:', process.env.JWT_SECRET ? '✅' : '❌');
-
-if (!process.env.JWT_SECRET) {
-    console.error('❌ ERROR CRÍTICO: JWT_SECRET no está definido en .env');
-    console.error('El servicio no puede autenticar usuarios sin esta variable');
-    process.exit(1);
-}
+dotenv.config({ path: '../../.env' });
 
 const supabase = createClient(
     process.env.SUPABASE_URL,
@@ -31,31 +20,12 @@ app.use(cors());
 
 const verifyToken = (req, res, next) => {
     const token = req.headers.authorization?.split(' ')[1];
-
     if (!token) {
-        return res.status(401).json({
-            success: false,
-            error: 'Token no proporcionado'
-        });
+        return res.status(401).json({ error: 'Token no proporcionado' });
     }
-
-    if (!process.env.JWT_SECRET) {
-        console.error('❌ JWT_SECRET no está configurado');
-        return res.status(500).json({
-            success: false,
-            error: 'Error de configuración del servidor',
-            detalle: 'JWT_SECRET no configurado'
-        });
-    }
-
     jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
         if (err) {
-            console.error('Error verificando token:', err.message);
-            return res.status(401).json({
-                success: false,
-                error: 'Token inválido o expirado',
-                detalle: err.message
-            });
+            return res.status(401).json({ error: 'Token inválido', detalle: err.message });
         }
         req.usuario = decoded;
         next();

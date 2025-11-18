@@ -1,4 +1,3 @@
-
 FROM node:20-alpine
 
 WORKDIR /app
@@ -8,6 +7,9 @@ COPY package*.json ./
 RUN npm install
 
 COPY . .
-EXPOSE 5000
 
-CMD ["node", "services/GetAllUsers.js"]
+COPY .env ./
+
+EXPOSE 5001
+
+CMD ["node", "services/Admin/BookingService.js"]
