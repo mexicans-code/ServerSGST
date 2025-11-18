@@ -4,24 +4,26 @@ import axios from 'axios';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 
-dotenv.config({ path: '../.env' });
+dotenv.config({ override: true });
 
 const app = express();
 const PORT = process.env.GATEWAY_PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET;
 
 const SERVICES = {
-    hospitality: process.env.HOSPITALITY_SERVICE_URL || 'http://localhost:3001',
-    auth: process.env.AUTH_SERVICE_URL || 'http://localhost:3002',
-    pay: process.env.PAY_SERVICE_URL || 'http://localhost:3004',
-    adminUser: process.env.ADMIN_USER_SERVICE_URL || 'http://localhost:3005',
-    adminBooking: process.env.ADMIN_BOOKING_SERVICE_URL || 'http://localhost:3006',
-    adminProfile: process.env.ADMIN_PROFILE_SERVICE_URL || 'http://localhost:3007',
-    chat: process.env.CHAT_SERVICE_URL || 'http://localhost:3008',
-    adminTouristExperiences: process.env.ADMIN_TOURIST_EXPERIENCES_SERVICE_URL || 'http://localhost:3009',
-    reviews: process.env.REVIEWS_SERVICE_URL || 'http://localhost:3010',
-    dashboardData: process.env.DASHBOARD_DATA_SERVICE_URL || 'http://localhost:3011',
+    hospitality: process.env.HOSPITALITY_SERVICE_URL || 'http://hospitality:3001',
+    auth: process.env.AUTH_SERVICE_URL || 'http://auth:3002',
+    pay: process.env.PAY_SERVICE_URL || 'http://pay:3004',
+    adminUser: process.env.ADMIN_USER_SERVICE_URL || 'http://admin-user:3005',
+    adminBooking: process.env.ADMIN_BOOKING_SERVICE_URL || 'http://booking:3006',
+    adminProfile: process.env.ADMIN_PROFILE_SERVICE_URL || 'http://admin-profile:3007',
+    chat: process.env.CHAT_SERVICE_URL || 'http://chat:4000',
+    adminTouristExperiences: process.env.ADMIN_TOURIST_EXPERIENCES_SERVICE_URL || 'http://admin-tourist-experiences:3009',
+    reviews: process.env.REVIEWS_SERVICE_URL || 'http://reviews:3010',
+    dashboardData: process.env.DASHBOARD_DATA_SERVICE_URL || 'http://dashboard-data:3011',
 };
+
+
 
 app.use(cors());
 app.use(express.json());
@@ -548,15 +550,10 @@ app.get('/api/dashboardAnfitrion/:id_anfitrion', async (req, res) => {
     try {
         const { id_anfitrion } = req.params;
 
-        // Llamada al microservicio de dashboardData (que está en el puerto 3011)
-        const response = await axios.get(`${process.env.DASHBOARD_DATA_SERVICE_URL || 'http://localhost:3011'}/dashboardAnfitrion/${id_anfitrion}`);
-
-        // Reenviar la respuesta completa al cliente
+        const response = await axios.get(`${SERVICES.dashboardData}/dashboardAnfitrion/${id_anfitrion}`);
         res.status(response.status).json(response.data);
-
     } catch (error) {
         console.error('❌ Error en Gateway - dashboard anfitrión:', error.message);
-
         res.status(error.response?.status || 500).json(
             error.response?.data || { error: 'Error en el servicio de dashboard anfitrión' }
         );
