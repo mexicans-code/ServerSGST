@@ -316,7 +316,7 @@ app.post("/purchase", async (req, res) => {
 
         if (tipo === 'tourism') {
             // ============= PROCESAR RESERVA DE TURISMO =============
-            
+
             // Insertar en tabla de reservas
             const { data: reservaData, error: reservaError } = await supabase
                 .from('reserva')
@@ -362,6 +362,38 @@ app.post("/purchase", async (req, res) => {
 
             id_pago = pagoData.id_pago;
 
+            // ================= ACTUALIZAR CAPACIDAD =================
+            const { data: expData, error: expError } = await supabase
+                .from("experiencias_turisticas")
+                .select("capacidad")
+                .eq("id_experiencia", reserva.id_experiencia)
+                .single();
+
+            if (expError) {
+                console.error("  Error al obtener capacidad actual:", expError);
+                throw expError;
+            }
+
+            const capacidadActual = expData.capacidad;
+            const nuevaCapacidad = capacidadActual - reserva.participantes;
+
+            if (nuevaCapacidad < 0) {
+                console.error("  No hay lugares suficientes.");
+                throw new Error("No hay suficientes lugares disponibles.");
+            }
+
+            const { error: updateError } = await supabase
+                .from("experiencias_turisticas")
+                .update({ capacidad: nuevaCapacidad })
+                .eq("id_experiencia", reserva.id_experiencia);
+
+            if (updateError) {
+                console.error("  Error al actualizar capacidad:", updateError);
+                throw updateError;
+            }
+
+            console.log(`🟦 Capacidad actualizada: ${capacidadActual} → ${nuevaCapacidad}`);
+
             // Responder exitosamente
             res.status(200).json({
                 success: true,
@@ -391,7 +423,7 @@ app.post("/purchase", async (req, res) => {
 
         } else {
             // ============= PROCESAR RESERVA DE HOSTELERÍA =============
-            
+
             const { data: reservaData, error: reservaError } = await supabase
                 .from('reserva')
                 .insert([{
@@ -434,6 +466,7 @@ app.post("/purchase", async (req, res) => {
             }
 
             id_pago = pagoData.id_pago;
+            
 
             // Responder exitosamente
             res.status(200).json({

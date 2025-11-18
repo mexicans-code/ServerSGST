@@ -225,30 +225,6 @@ app.post('/google-login', async (req, res) => {
     try {
         const { credential } = req.body;
 
-        // ===== LOGS DE DEBUG =====
-        console.log('\n========== GOOGLE LOGIN DEBUG ==========');
-        console.log('1. GOOGLE_CLIENT_ID en backend:', GOOGLE_CLIENT_ID);
-        console.log('2. Credential recibido (primeros 50 chars):', credential?.substring(0, 50));
-
-        // Decodificar el token para ver el audience
-        if (credential) {
-            try {
-                const base64Url = credential.split('.')[1];
-                const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-                const jsonPayload = decodeURIComponent(atob(base64).split('').map(function (c) {
-                    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-                }).join(''));
-                const decoded = JSON.parse(jsonPayload);
-
-                console.log('3. Audience (aud) en el token:', decoded.aud);
-                console.log('4. Issuer (iss) en el token:', decoded.iss);
-                console.log('5. ¿Coinciden?', decoded.aud === GOOGLE_CLIENT_ID);
-            } catch (decodeError) {
-                console.log('Error al decodificar token:', decodeError.message);
-            }
-        }
-        console.log('========================================\n');
-
         if (!credential) {
             return res.status(400).json({
                 success: false,
@@ -257,16 +233,14 @@ app.post('/google-login', async (req, res) => {
         }
 
         if (!GOOGLE_CLIENT_ID) {
-            console.error('GOOGLE_CLIENT_ID no está configurado en las variables de entorno');
             return res.status(500).json({
                 success: false,
                 error: "Configuración de Google OAuth no disponible"
             });
         }
 
-        // Verificar el token de Google
+        // Verificar token de Google
         const client = new OAuth2Client(GOOGLE_CLIENT_ID);
-
         const ticket = await client.verifyIdToken({
             idToken: credential,
             audience: GOOGLE_CLIENT_ID
@@ -275,10 +249,8 @@ app.post('/google-login', async (req, res) => {
         const payload = ticket.getPayload();
         const { email, name, picture, sub: googleId } = payload;
 
-        console.log('Usuario de Google autenticado:', { email, name, googleId });
-
         // Buscar usuario por email
-        const { data: usuarioExistente, error: errorBusqueda } = await supabase
+        const { data: usuarioExistente } = await supabase
             .from('usuario')
             .select('*')
             .eq('email', email)
@@ -287,18 +259,21 @@ app.post('/google-login', async (req, res) => {
         let usuario;
 
         if (usuarioExistente) {
-            // Usuario existe - simplemente usarlo
+            // Usuario ya existe: mantener su rol
             usuario = usuarioExistente;
 
-            // Actualizar foto en perfil si existe la foto de Google
+            // Actualizar foto de perfil si viene de Google
             if (picture) {
                 await supabase
                     .from('perfil')
                     .update({ foto: picture })
                     .eq('id_usuario', usuarioExistente.id_usuario);
             }
+
+            console.log('Usuario existente con rol:', usuario.rol);
+
         } else {
-            // Usuario nuevo - crear cuenta
+            // Usuario nuevo: crear con rol 'usuario'
             const nombrePartes = name.split(' ');
             const nombre = nombrePartes[0] || name;
             const apellido_p = nombrePartes[1] || '';
@@ -311,7 +286,7 @@ app.post('/google-login', async (req, res) => {
                     apellido_p: apellido_p,
                     apellido_m: apellido_m,
                     email: email,
-                    password: bcrypt.hashSync(Math.random().toString(36), 10), // Password random
+                    password: bcrypt.hashSync(Math.random().toString(36), 10),
                     rol: 'usuario',
                     estado: 'activo'
                 })
@@ -319,7 +294,6 @@ app.post('/google-login', async (req, res) => {
                 .single();
 
             if (errorCrear) {
-                console.error('Error al crear usuario con Google:', errorCrear);
                 return res.status(500).json({
                     success: false,
                     error: "Error al crear usuario"
@@ -338,7 +312,7 @@ app.post('/google-login', async (req, res) => {
             usuario = nuevoUsuario;
         }
 
-        // Verificar estado del usuario
+        // Verificar estado
         if (usuario.estado !== 'activo') {
             return res.status(403).json({
                 success: false,
@@ -354,18 +328,18 @@ app.post('/google-login', async (req, res) => {
             success: true,
             message: "Login con Google exitoso",
             token: token,
-            usuario: usuarioSinPassword
+            usuario: usuarioSinPassword // incluye el rol correcto
         });
 
     } catch (error) {
         console.error('Error en Google login:', error);
-        console.error('Error completo:', error.stack);
         return res.status(500).json({
             success: false,
             error: error.message || "Error al procesar login con Google"
         });
     }
 });
+
 
 // Error handler
 app.use((err, req, res, next) => {
