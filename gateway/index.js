@@ -11,16 +11,16 @@ const PORT = process.env.GATEWAY_PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET;
 
 const SERVICES = {
-    hospitality: process.env.HOSPITALITY_SERVICE_URL || 'http://hospitality:3001',
-    auth: process.env.AUTH_SERVICE_URL || 'http://auth:3002',
-    pay: process.env.PAY_SERVICE_URL || 'http://pay:3004',
-    adminUser: process.env.ADMIN_USER_SERVICE_URL || 'http://admin-user:3005',
-    adminBooking: process.env.ADMIN_BOOKING_SERVICE_URL || 'http://booking:3006',
-    adminProfile: process.env.ADMIN_PROFILE_SERVICE_URL || 'http://admin-profile:3007',
-    chat: process.env.CHAT_SERVICE_URL || 'http://chat:4000',
-    adminTouristExperiences: process.env.ADMIN_TOURIST_EXPERIENCES_SERVICE_URL || 'http://admin-tourist-experiences:3009',
-    reviews: process.env.REVIEWS_SERVICE_URL || 'http://reviews:3010',
-    dashboardData: process.env.DASHBOARD_DATA_SERVICE_URL || 'http://dashboard-data:3011',
+    hospitality: process.env.HOSPITALITY_SERVICE_URL || 'https://hospitality-production-72f9.up.railway.app',
+    auth: process.env.AUTH_SERVICE_URL || 'https://auth-production-2d1d.up.railway.app',
+    pay: process.env.PAY_SERVICE_URL || 'https://pay-production-5c4c.up.railway.app',
+    adminUser: process.env.ADMIN_USER_SERVICE_URL || 'https://adminuser-production.up.railway.app',
+    adminBooking: process.env.ADMIN_BOOKING_SERVICE_URL || 'https://adminbooking-production.up.railway.app',
+    adminProfile: process.env.ADMIN_PROFILE_SERVICE_URL || 'https://adminprofile-production.up.railway.app',
+    chat: process.env.CHAT_SERVICE_URL || 'https://chat-production-f6677.up.railway.app',
+    adminTouristExperiences: process.env.ADMIN_TOURIST_EXPERIENCES_SERVICE_URL || 'https://valiant-cooperation-production.up.railway.app',
+    reviews: process.env.REVIEWS_SERVICE_URL || 'https://review-production-fad7.up.railway.app',
+    dashboardData: process.env.DASHBOARD_DATA_SERVICE_URL || 'https://dashboarddata-production.up.railway.app',
 };
 
 
@@ -449,7 +449,6 @@ app.post('/api/reviews/addReview', async (req, res) => {
     }
 });
 
-// ===== RUTAS DE CHAT =====
 app.use('/api/chat', verifyToken, async (req, res) => {
     try {
         const response = await axios({
@@ -469,7 +468,6 @@ app.use('/api/chat', verifyToken, async (req, res) => {
     }
 });
 
-// ====== RUTAS DEL DASHBOARD (MICROSERVICIO 3011) ======
 app.get('/api/dashboard/resumen', async (req, res) => {
     try {
         const response = await axios.get(`${SERVICES.dashboardData}/dashboardResumen`);
@@ -518,7 +516,6 @@ app.get('/api/dashboard/ingresos-anfitrion', async (req, res) => {
     }
 });
 
-// Obtener datos de hotelería filtrados por anfitrión
 app.get('/api/dashboard/hotelData/:id_anfitrion', async (req, res) => {
     try {
         const { id_anfitrion } = req.params;
@@ -532,7 +529,6 @@ app.get('/api/dashboard/hotelData/:id_anfitrion', async (req, res) => {
     }
 });
 
-// Obtener experiencias turísticas filtradas por anfitrión
 app.get('/api/dashboard/touristExperiences/:id_anfitrion', async (req, res) => {
     try {
         const { id_anfitrion } = req.params;
@@ -545,7 +541,6 @@ app.get('/api/dashboard/touristExperiences/:id_anfitrion', async (req, res) => {
         );
     }
 });
-// ==================== DASHBOARD ANFITRIÓN ====================
 app.get('/api/dashboardAnfitrion/:id_anfitrion', async (req, res) => {
     try {
         const { id_anfitrion } = req.params;
@@ -560,7 +555,6 @@ app.get('/api/dashboardAnfitrion/:id_anfitrion', async (req, res) => {
     }
 });
 
-// ===== MANEJO DE ERRORES =====
 app.use((err, req, res, next) => {
     console.error('❌ Error no manejado:', err);
     res.status(500).json({ error: 'Error interno del servidor' });
