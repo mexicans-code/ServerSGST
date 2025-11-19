@@ -619,12 +619,11 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: "Something went wrong!" });
 });
 
-// ==================== START SERVER ====================
 app.listen(PORT, () => {
-    console.log(`🚀 Hospitality Service started successfully!`);
-    console.log(`📍 Running on: http://localhost:${PORT}`);
-    console.log(`🏨 Hotel data: http://localhost:${PORT}/getHotelData`);
-    console.log(`📤 Upload image: http://localhost:${PORT}/uploadImage`);
-    console.log(`✅ Test Cloudinary: http://localhost:${PORT}/test-cloudinary`);
+    console.log("🚀 Hospitality Service started successfully!");
+    console.log(`📍 Running on PORT: ${PORT}`);
+    console.log(`🏨 Hotel data route: /getHotelData`);
+    console.log(`📤 Upload image: /uploadImage`);
     console.log(`⏰ Server started at: ${new Date().toISOString()}`);
 });
+
