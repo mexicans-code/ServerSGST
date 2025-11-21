@@ -62,8 +62,7 @@ const verifyToken = (req, res, next) => {
     });
 };
 
-// GET - Obtener perfil del usuario
-app.get("/getProfile", verifyToken, async (req, res) => {
+app.get("/getProfile", async (req, res) => {
     try {
         const { data: dataUsuario, error: errorUsuario } = await supabase
             .from("usuario")
@@ -103,7 +102,7 @@ app.get("/getProfile", verifyToken, async (req, res) => {
     }
 });
 
-app.put("/updateProfile", verifyToken, async (req, res) => {
+app.put("/updateProfile", async (req, res) => {
     try {
         const { nombre, email, apellido_p, apellido_m, telefono, direccion, foto, password } = req.body;
 
