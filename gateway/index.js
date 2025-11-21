@@ -364,7 +364,7 @@ app.delete('/api/adminTouristExperiences/deleteTouristExperience/:id', async (re
 });
 
 // ===== RUTAS DE ADMINISTRACIÓN DE PERFIL =====
-app.get('/api/adminProfile/getProfile', async (req, res) => {
+app.get('/api/adminProfile/getProfile', verifyToken, async (req, res) => {
     try {
         const response = await axios.get(`${SERVICES.adminProfile}/getProfile`, {
             headers: {
