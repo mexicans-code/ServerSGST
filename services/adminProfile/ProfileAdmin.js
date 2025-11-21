@@ -33,6 +33,7 @@ const verifyToken = (req, res, next) => {
     const token = req.headers.authorization?.split(' ')[1];
 
     if (!token) {
+        console.warn('⚠️ Token no proporcionado en la cabecera Authorization');
         return res.status(401).json({
             success: false,
             error: 'Token no proporcionado'
@@ -50,20 +51,23 @@ const verifyToken = (req, res, next) => {
 
     jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
         if (err) {
-            console.error('Error verificando token:', err.message);
+            console.error('❌ Error verificando token:', err.message);
             return res.status(401).json({
                 success: false,
                 error: 'Token inválido o expirado',
                 detalle: err.message
             });
         }
+        console.log('✅ Token decodificado en ProfileService:', decoded);
         req.usuario = decoded;
         next();
     });
 };
 
-app.get("/getProfile", async (req, res) => {
+app.get("/getProfile", verifyToken, async (req, res) => {
     try {
+        console.log(`🔍 Consultando usuario con id_usuario: ${req.usuario.id_usuario}`);
+
         const { data: dataUsuario, error: errorUsuario } = await supabase
             .from("usuario")
             .select("*")
@@ -71,12 +75,16 @@ app.get("/getProfile", async (req, res) => {
             .single();
 
         if (errorUsuario) {
+            console.error('❌ Error obteniendo usuario:', errorUsuario);
             return res.status(400).json({ success: false, error: errorUsuario.message });
         }
 
         if (!dataUsuario) {
+            console.warn(`⚠️ Usuario no encontrado con id_usuario: ${req.usuario.id_usuario}`);
             return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
         }
+
+        console.log(`🔍 Usuario encontrado: ${dataUsuario.email}`);
 
         const { data: dataPerfil, error: errorPerfil } = await supabase
             .from("perfil")
@@ -85,10 +93,11 @@ app.get("/getProfile", async (req, res) => {
             .single();
 
         if (errorPerfil && errorPerfil.code !== 'PGRST116') {
-            console.log('Advertencia al obtener perfil:', errorPerfil);
+            console.warn('⚠️ Advertencia al obtener perfil:', errorPerfil);
         }
 
         delete dataUsuario.password;
+
         const resultado = {
             ...dataUsuario,
             telefono: dataPerfil?.telefono || '',
@@ -96,23 +105,26 @@ app.get("/getProfile", async (req, res) => {
             foto: dataPerfil?.foto || ''
         };
 
+        console.log('✅ Resultado perfil combinado:', resultado);
+
         res.json({ success: true, data: resultado });
+
     } catch (err) {
+        console.error('❌ Error en GET /getProfile:', err);
         res.status(500).json({ success: false, error: err.message });
     }
 });
 
-app.put("/updateProfile", async (req, res) => {
+app.put("/updateProfile", verifyToken, async (req, res) => {
     try {
+        console.log(`🔄 Actualizando perfil de usuario: ${req.usuario.id_usuario}`);
         const { nombre, email, apellido_p, apellido_m, telefono, direccion, foto, password } = req.body;
 
         const updateDataUsuario = {};
-
         if (nombre !== undefined) updateDataUsuario.nombre = nombre;
         if (email !== undefined) updateDataUsuario.email = email;
         if (apellido_p !== undefined) updateDataUsuario.apellido_p = apellido_p;
         if (apellido_m !== undefined) updateDataUsuario.apellido_m = apellido_m;
-
         if (password) {
             updateDataUsuario.password = await bcrypt.hash(password, 10);
         }
@@ -125,11 +137,11 @@ app.put("/updateProfile", async (req, res) => {
             .single();
 
         if (errorUsuario) {
+            console.error('❌ Error actualizando usuario:', errorUsuario);
             return res.status(400).json({ success: false, error: errorUsuario.message });
         }
 
         const updateDataPerfil = {};
-
         if (telefono !== undefined) updateDataPerfil.telefono = telefono;
         if (direccion !== undefined) updateDataPerfil.direccion = direccion;
         if (foto !== undefined) updateDataPerfil.foto = foto;
@@ -142,10 +154,12 @@ app.put("/updateProfile", async (req, res) => {
             .single();
 
         if (errorPerfil) {
+            console.error('❌ Error actualizando perfil:', errorPerfil);
             return res.status(400).json({ success: false, error: errorPerfil.message });
         }
 
         delete dataUsuario.password;
+
         const resultado = {
             ...dataUsuario,
             telefono: dataPerfil.telefono,
@@ -153,8 +167,12 @@ app.put("/updateProfile", async (req, res) => {
             foto: dataPerfil.foto
         };
 
+        console.log('✅ Perfil actualizado exitosamente:', resultado);
+
         res.json({ success: true, data: resultado });
+
     } catch (err) {
+        console.error('❌ Error en PUT /updateProfile:', err);
         res.status(500).json({ success: false, error: err.message });
     }
 });
